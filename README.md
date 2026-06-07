@@ -122,7 +122,7 @@ streamlit run app.py
 - 默认使用官方 `batchUpdate` 接口
 - 默认接口为 `https://docs.qq.com/openapi/spreadsheet/v3/files/{fileId}/batchUpdate`
 - 工作表 `sheetId` 会从 `TENCENT_DOCS_FILE_URL` 的 `tab` 参数自动提取
-- 如果你需要适配自己的请求体，可调整 [tencent_docs.py]
+- 如果你需要适配自己的请求体，可调整 [tencent_docs.py](./app/services/tencent_docs.py)
 - 网络异常或权限异常会被安全降级，不会中断整批处理
 
 ### 邮箱采集
