@@ -223,12 +223,12 @@ streamlit run app.py
 
 ## 代码入口
 
-- 主页面：[app.py](file:///F:/就业/项目/云测/app.py)
-- 配置读取：[config.py](file:///F:/就业/项目/云测/app/config.py)
-- 简历解析：[resume_parser.py](file:///F:/就业/项目/云测/app/services/resume_parser.py)
-- JD 打分：[scoring.py](file:///F:/就业/项目/云测/app/services/scoring.py)
-- 邮件采集：[collector.py](file:///F:/就业/项目/云测/app/services/collector.py)
-- 候选人通知邮件：[mailer.py](file:///F:/就业/项目/云测/app/services/mailer.py)
-- 企业微信通知：[notifier.py](file:///F:/就业/项目/云测/app/services/notifier.py)
-- 腾讯文档同步：[tencent_docs.py](file:///F:/就业/项目/云测/app/services/tencent_docs.py)
-- CSV 存储：[repository.py](file:///F:/就业/项目/云测/app/storage/repository.py)
+- 主页面：[app.py](./app.py)
+- 配置读取：[config.py](./app/config.py)
+- 简历解析：[resume_parser.py](./app/services/resume_parser.py)
+- JD 打分：[scoring.py](./app/services/scoring.py)
+- 邮件采集：[collector.py](./app/services/collector.py)
+- 候选人通知邮件：[mailer.py](./app/services/mailer.py)
+- 企业微信通知：[notifier.py](./app/services/notifier.py)
+- 腾讯文档同步：[tencent_docs.py](./app/services/tencent_docs.py)
+- CSV 存储：[repository.py](./app/storage/repository.py)
