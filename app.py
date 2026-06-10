@@ -347,6 +347,10 @@ def format_bool_cn(value: object) -> str:
     return "是" if text in {"true", "1", "yes", "y"} else "否"
 
 
+def parse_bool(value: object) -> bool:
+    return str(value).strip().lower() in {"true", "1", "yes", "y"}
+
+
 def get_job_dimension_weights(job_info: dict[str, object]) -> dict[str, float]:
     column_map = {
         "教育背景": "weight_education",
@@ -641,6 +645,102 @@ def derive_recommendation_from_status(candidate_status: str) -> str:
     return mapping.get(candidate_status, "")
 
 
+def derive_recommendation_from_score(score: object) -> str:
+    normalized_score = normalize_score_100(score)
+    if normalized_score >= 80:
+        return "推荐"
+    if normalized_score >= 65:
+        return "待定"
+    return "不推荐"
+
+
+def build_record_from_row(
+    row: dict[str, object],
+    *,
+    score: float | None = None,
+    recommendation: str | None = None,
+    target_role: str | None = None,
+) -> CandidateRecord:
+    return CandidateRecord(
+        position_id=str(row.get("position_id") or ""),
+        source=str(row.get("source") or ""),
+        file_name=str(row.get("file_name") or ""),
+        name=str(row.get("name") or ""),
+        phone=str(row.get("phone") or ""),
+        email=str(row.get("email") or ""),
+        education=str(row.get("education") or ""),
+        years_experience=str(row.get("years_experience") or ""),
+        skills=str(row.get("skills") or ""),
+        target_role=target_role if target_role is not None else str(row.get("target_role") or ""),
+        score=float(score if score is not None else row.get("score") or 0),
+        recommendation=recommendation if recommendation is not None else str(row.get("recommendation") or "待定"),
+        summary=str(row.get("summary") or ""),
+        agent_status=str(row.get("agent_status") or "待解析"),
+        status=str(row.get("status") or "待沟通"),
+        interview_time=str(row.get("interview_time") or ""),
+        interviewer=str(row.get("interviewer") or ""),
+        offer_salary=str(row.get("offer_salary") or ""),
+        offer_join_date=str(row.get("offer_join_date") or ""),
+        offer_deadline=str(row.get("offer_deadline") or ""),
+        synced_to_tencent_docs=parse_bool(row.get("synced_to_tencent_docs")),
+        pushed_to_wecom=parse_bool(row.get("pushed_to_wecom")),
+        updated_at=str(row.get("updated_at") or ""),
+    )
+
+
+def recalculate_candidates_for_job(job_info: dict[str, object]) -> int:
+    position_id = str(job_info.get("position_id") or "")
+    jd_text = str(job_info.get("jd_text") or "")
+    target_role = str(job_info.get("target_role") or "")
+    weights = get_job_dimension_weights(job_info)
+    candidates_df = repo.list_all()
+    if candidates_df.empty:
+        return 0
+
+    job_candidates_df = candidates_df[candidates_df["position_id"].astype(str) == position_id].copy()
+    if job_candidates_df.empty:
+        return 0
+
+    overrides = st.session_state.get("candidate_status_overrides", {}).copy()
+    updated_count = 0
+    status_locked_recommendations = {"一面", "二面", "终面", "已录用"}
+    for row in job_candidates_df.to_dict(orient="records"):
+        scorecard = build_scorecard(
+            {
+                "education": row.get("education", ""),
+                "years_experience": row.get("years_experience", ""),
+                "skills": row.get("skills", ""),
+                "target_role": target_role or row.get("target_role", ""),
+                "summary": row.get("summary", ""),
+            },
+            jd_text,
+            raw_score=row.get("score"),
+            weights=weights,
+        )
+        new_score = float(scorecard["final_match_score"])
+        current_status = str(row.get("status") or "")
+        if current_status in status_locked_recommendations:
+            new_recommendation = current_status
+        elif current_status == "已淘汰":
+            new_recommendation = "不推荐"
+        else:
+            new_recommendation = derive_recommendation_from_score(new_score)
+
+        repo.upsert(
+            build_record_from_row(
+                row,
+                score=new_score,
+                recommendation=new_recommendation,
+                target_role=target_role or str(row.get("target_role") or ""),
+            )
+        )
+        overrides.pop(build_candidate_identity(row), None)
+        updated_count += 1
+
+    st.session_state.candidate_status_overrides = overrides
+    return updated_count
+
+
 def apply_candidate_status_overrides(df: pd.DataFrame) -> pd.DataFrame:
     overrides = st.session_state.get("candidate_status_overrides", {})
     if df.empty or not overrides:
@@ -844,7 +944,7 @@ with tab_config:
     else:
         st.success("当前能力权重合计：100")
 
-    save_job_col1, save_job_col2 = st.columns([1, 1.2])
+    save_job_col1, save_job_col2, save_job_col3 = st.columns([1, 1, 1.2])
     with save_job_col1:
         if st.button("保存岗位配置", use_container_width=True, key="save_job_config"):
             if not position_id.strip() or not target_role.strip() or not jd_text.strip():
@@ -864,6 +964,36 @@ with tab_config:
                 )
                 st.success("岗位配置已保存，系统已自动归一化为 100 分。")
     with save_job_col2:
+        if st.button("按当前岗位权重重算候选人分数", use_container_width=True, key="recalculate_job_scores"):
+            if not position_id.strip() or not target_role.strip() or not jd_text.strip():
+                st.error("请先完善岗位ID、岗位名称和 JD。")
+            elif weight_total <= 0:
+                st.error("能力权重总和必须大于 0。")
+            else:
+                current_job = {
+                    "position_id": position_id.strip(),
+                    "target_role": target_role.strip(),
+                    "jd_text": jd_text.strip(),
+                    "weight_education": normalized_job_weights["教育背景"],
+                    "weight_experience": normalized_job_weights["工作经验"],
+                    "weight_skills": normalized_job_weights["核心技能"],
+                    "weight_role": normalized_job_weights["岗位匹配"],
+                    "weight_communication": normalized_job_weights["沟通协作"],
+                }
+                job_repo.upsert(
+                    current_job["position_id"],
+                    current_job["target_role"],
+                    current_job["jd_text"],
+                    weight_education=current_job["weight_education"],
+                    weight_experience=current_job["weight_experience"],
+                    weight_skills=current_job["weight_skills"],
+                    weight_role=current_job["weight_role"],
+                    weight_communication=current_job["weight_communication"],
+                )
+                recalculated_count = recalculate_candidates_for_job(current_job)
+                st.success(f"已按当前岗位权重重算 {recalculated_count} 位候选人的分数。")
+                st.rerun()
+    with save_job_col3:
         with st.expander("查看配置说明", expanded=False):
             st.markdown(
                 """
