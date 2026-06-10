@@ -68,6 +68,14 @@ JOB_COLUMNS = [
     "weight_role",
     "weight_communication",
 ]
+JOB_TEXT_COLUMNS = ["position_id", "target_role", "jd_text"]
+JOB_WEIGHT_COLUMNS = [
+    "weight_education",
+    "weight_experience",
+    "weight_skills",
+    "weight_role",
+    "weight_communication",
+]
 ROUTE_COLUMNS = ["position_id", "group_name", "webhook_url", "enabled"]
 
 DEFAULT_JOBS = [
@@ -195,8 +203,14 @@ class JobRepository:
         df = pd.read_csv(self.csv_path)
         for column in JOB_COLUMNS:
             if column not in df.columns:
-                df[column] = ""
-        return df[JOB_COLUMNS].fillna("")
+                df[column] = "" if column in JOB_TEXT_COLUMNS else 0.0
+        for column in JOB_TEXT_COLUMNS:
+            if column in df.columns:
+                df[column] = df[column].fillna("").astype(str)
+        for column in JOB_WEIGHT_COLUMNS:
+            if column in df.columns:
+                df[column] = pd.to_numeric(df[column], errors="coerce").fillna(0.0).astype(float)
+        return df[JOB_COLUMNS]
 
     def upsert(
         self,
